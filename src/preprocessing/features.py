@@ -1,14 +1,42 @@
-"""Feature engineering pour les matchs de tennis (version optimisée)."""
+"""Feature engineering pour les matchs de tennis (version optimise)."""
 
 import pandas as pd
 import numpy as np
 from collections import defaultdict
 
 
+def _compute_decay_weights(dates, match_date, half_life_days=None):
+    """
+    Cree des poids decroissants avec le temps (decay exponentiel).
+    Si half_life_days est None ou <= 0, poids uniformes.
+    """
+    if half_life_days is None or half_life_days <= 0:
+        return np.ones(len(dates)) / len(dates)
+
+    deltas = (pd.to_datetime(match_date) - pd.to_datetime(dates)).days
+    deltas = np.asarray(deltas, dtype=float)
+    deltas = np.clip(deltas, a_min=0, a_max=None)
+    weights = np.exp(-deltas / half_life_days)
+    total = weights.sum()
+    return weights / total if total > 0 else np.ones(len(dates)) / len(dates)
+
+
+def _weighted_sum(recent, weights, key):
+    """Somme ponderee en ignorant les NaN."""
+    total = 0.0
+    weight_total = 0.0
+    for m, w in zip(recent, weights):
+        val = m.get(key, np.nan)
+        if pd.notna(val):
+            total += w * val
+            weight_total += w
+    return total, weight_total
+
+
 def build_player_history(df):
     """
-    Précalcule l'historique de tous les joueurs.
-    Retourne un dict: player_id -> list de matchs triés par date.
+    Precalcule l'historique de tous les joueurs.
+    Retourne un dict: player_id -> list de matchs tries par date.
     """
     history = defaultdict(list)
     
@@ -52,36 +80,34 @@ def build_player_history(df):
     return history
 
 
-def get_player_stats(history, player_id, match_date, n_matches):
-    """Calcule les stats d'un joueur avant une date donnée."""
+def get_player_stats(history, player_id, match_date, n_matches, half_life_days=None):
+    """Calcule les stats d'un joueur avant une date donnee avec un decay temporel."""
     if player_id not in history:
         return None
     
-    # Matchs avant la date
     past = [m for m in history[player_id] if m["date"] < match_date]
     if len(past) == 0:
         return None
     
     recent = past[-n_matches:]
-    
-    wins = sum(m["won"] for m in recent)
-    total = len(recent)
-    
-    # Agréger stats de service
-    total_ace = sum(m["ace"] for m in recent if pd.notna(m["ace"]))
-    total_df = sum(m["df"] for m in recent if pd.notna(m["df"]))
-    total_svpt = sum(m["svpt"] for m in recent if pd.notna(m["svpt"]))
-    total_1stIn = sum(m["1stIn"] for m in recent if pd.notna(m["1stIn"]))
-    total_1stWon = sum(m["1stWon"] for m in recent if pd.notna(m["1stWon"]))
-    total_2ndWon = sum(m["2ndWon"] for m in recent if pd.notna(m["2ndWon"]))
-    total_bpSaved = sum(m["bpSaved"] for m in recent if pd.notna(m["bpSaved"]))
-    total_bpFaced = sum(m["bpFaced"] for m in recent if pd.notna(m["bpFaced"]))
+    weights = _compute_decay_weights([m["date"] for m in recent], match_date, half_life_days=half_life_days)
+
+    wins = float(np.dot(weights, [m["won"] for m in recent]))
+
+    total_ace, _ = _weighted_sum(recent, weights, "ace")
+    total_df, _ = _weighted_sum(recent, weights, "df")
+    total_svpt, _ = _weighted_sum(recent, weights, "svpt")
+    total_1stIn, _ = _weighted_sum(recent, weights, "1stIn")
+    total_1stWon, _ = _weighted_sum(recent, weights, "1stWon")
+    total_2ndWon, _ = _weighted_sum(recent, weights, "2ndWon")
+    total_bpSaved, _ = _weighted_sum(recent, weights, "bpSaved")
+    total_bpFaced, _ = _weighted_sum(recent, weights, "bpFaced")
     
     second_serve_attempts = total_svpt - total_1stIn
     
     return {
-        "win_rate": wins / total,
-        "matches_played": total,
+        "win_rate": wins,  # deja normalise car poids normalises
+        "matches_played": len(recent),
         "ace_rate": total_ace / total_svpt if total_svpt > 0 else 0,
         "df_rate": total_df / total_svpt if total_svpt > 0 else 0,
         "first_serve_pct": total_1stIn / total_svpt if total_svpt > 0 else 0,
@@ -91,8 +117,8 @@ def get_player_stats(history, player_id, match_date, n_matches):
     }
 
 
-def get_surface_win_rate(history, player_id, match_date, surface, n_matches):
-    """Calcule le win_rate sur une surface."""
+def get_surface_win_rate(history, player_id, match_date, surface, n_matches, half_life_days=None):
+    """Calcule le win_rate sur une surface avec decay temporel."""
     if player_id not in history:
         return 0.5
     
@@ -101,11 +127,12 @@ def get_surface_win_rate(history, player_id, match_date, surface, n_matches):
         return 0.5
     
     recent = past[-n_matches:]
-    return sum(m["won"] for m in recent) / len(recent)
+    weights = _compute_decay_weights([m["date"] for m in recent], match_date, half_life_days=half_life_days)
+    return float(np.dot(weights, [m["won"] for m in recent]))
 
 
-def get_h2h(history, player_a, player_b, match_date):
-    """Calcule le H2H entre deux joueurs."""
+def get_h2h(history, player_a, player_b, match_date, half_life_days=None):
+    """Calcule le H2H entre deux joueurs avec decay temporel."""
     if player_a not in history:
         return 0.5
     
@@ -113,11 +140,12 @@ def get_h2h(history, player_a, player_b, match_date):
     if len(h2h) == 0:
         return 0.5
     
-    return sum(m["won"] for m in h2h) / len(h2h)
+    weights = _compute_decay_weights([m["date"] for m in h2h], match_date, half_life_days=half_life_days)
+    return float(np.dot(weights, [m["won"] for m in h2h]))
 
 
 def get_default_stats(rank):
-    """Stats par défaut basées sur le rang."""
+    """Stats par defaut basees sur le rang."""
     # Meilleurs joueurs ont de meilleures stats
     if rank <= 10:
         return {"win_rate": 0.7, "ace_rate": 0.08, "df_rate": 0.02, "first_serve_pct": 0.65,
@@ -133,8 +161,8 @@ def get_default_stats(rank):
                 "first_serve_won": 0.68, "second_serve_won": 0.48, "bp_save_rate": 0.58, "matches_played": 0}
 
 
-def create_features(df, history, n_hist, n_surf, rng):
-    """Crée toutes les features pour un DataFrame de matchs."""
+def create_features(df, history, n_hist, n_surf, rng, half_life_days=None):
+    """Cree toutes les features pour un DataFrame de matchs avec decay temporel."""
     features_list = []
     
     for _, row in df.iterrows():
@@ -170,7 +198,7 @@ def create_features(df, history, n_hist, n_surf, rng):
             "round": row["round"],
         }
         
-        # Différences
+        # Differences
         f["rank_diff"] = f["rank_a"] - f["rank_b"]
         f["rank_ratio"] = f["rank_a"] / f["rank_b"] if f["rank_b"] > 0 else 1
         f["points_diff"] = f["points_a"] - f["points_b"]
@@ -178,27 +206,31 @@ def create_features(df, history, n_hist, n_surf, rng):
         f["height_diff"] = f["height_a"] - f["height_b"]
         
         # Stats historiques joueur A
-        stats_a = get_player_stats(history, player_a_id, match_date, n_hist)
+        stats_a = get_player_stats(history, player_a_id, match_date, n_hist, half_life_days=half_life_days)
         if stats_a is None:
             stats_a = get_default_stats(f["rank_a"])
         for k, v in stats_a.items():
             f[f"{k}_a"] = v
         
         # Stats historiques joueur B
-        stats_b = get_player_stats(history, player_b_id, match_date, n_hist)
+        stats_b = get_player_stats(history, player_b_id, match_date, n_hist, half_life_days=half_life_days)
         if stats_b is None:
             stats_b = get_default_stats(f["rank_b"])
         for k, v in stats_b.items():
             f[f"{k}_b"] = v
         
         # Surface win rate
-        f["surface_win_rate_a"] = get_surface_win_rate(history, player_a_id, match_date, surface, n_surf)
-        f["surface_win_rate_b"] = get_surface_win_rate(history, player_b_id, match_date, surface, n_surf)
+        f["surface_win_rate_a"] = get_surface_win_rate(
+            history, player_a_id, match_date, surface, n_surf, half_life_days=half_life_days
+        )
+        f["surface_win_rate_b"] = get_surface_win_rate(
+            history, player_b_id, match_date, surface, n_surf, half_life_days=half_life_days
+        )
         
         # H2H
-        f["h2h_win_rate_a"] = get_h2h(history, player_a_id, player_b_id, match_date)
+        f["h2h_win_rate_a"] = get_h2h(history, player_a_id, player_b_id, match_date, half_life_days=half_life_days)
         
-        # Différences historiques
+        # Differences historiques
         f["win_rate_diff"] = f["win_rate_a"] - f["win_rate_b"]
         f["surface_win_rate_diff"] = f["surface_win_rate_a"] - f["surface_win_rate_b"]
         f["ace_rate_diff"] = f["ace_rate_a"] - f["ace_rate_b"]

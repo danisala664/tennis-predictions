@@ -13,15 +13,16 @@ from .features import (
 
 import sys
 sys.path.append(str(Path(__file__).parent.parent))
-from config import RANDOM_STATE, N_HISTORICAL_MATCHES, N_SURFACE_MATCHES
+from config import RANDOM_STATE, N_HISTORICAL_MATCHES, N_SURFACE_MATCHES, HALF_LIFE_DAYS
 
 
 class TennisPreprocessor:
     """Preprocesseur pour les données de tennis."""
     
-    def __init__(self, n_hist=N_HISTORICAL_MATCHES, n_surf=N_SURFACE_MATCHES):
+    def __init__(self, n_hist=N_HISTORICAL_MATCHES, n_surf=N_SURFACE_MATCHES, half_life_days=HALF_LIFE_DAYS):
         self.n_hist = n_hist
         self.n_surf = n_surf
+        self.half_life_days = half_life_days
         self.rng = np.random.default_rng(RANDOM_STATE)
         self.history = None
         self.categorical_cols = ["surface", "tourney_level", "round"]
@@ -34,7 +35,14 @@ class TennisPreprocessor:
         self.history = build_player_history(matches_df)
         
         # Créer features
-        features_df = create_features(matches_df, self.history, self.n_hist, self.n_surf, self.rng)
+        features_df = create_features(
+            matches_df,
+            self.history,
+            self.n_hist,
+            self.n_surf,
+            self.rng,
+            half_life_days=self.half_life_days,
+        )
         
         # Encoder catégorielles
         features_df = self._encode_categorical(features_df, fit=True)
@@ -54,7 +62,14 @@ class TennisPreprocessor:
         # Reconstruire historique avec toutes les données
         full_history = build_player_history(all_matches_df)
         
-        features_df = create_features(matches_df, full_history, self.n_hist, self.n_surf, self.rng)
+        features_df = create_features(
+            matches_df,
+            full_history,
+            self.n_hist,
+            self.n_surf,
+            self.rng,
+            half_life_days=self.half_life_days,
+        )
         features_df = self._encode_categorical(features_df, fit=False)
         
         # Aligner colonnes avec train
@@ -136,12 +151,16 @@ class TennisPreprocessor:
         surface = row["surface"]
         
         # Stats joueur A (ordre corrigé: history, player_id, match_date, n_matches)
-        stats_a = get_player_stats(self.history, id_a, prediction_date, self.n_hist)
+        stats_a = get_player_stats(
+            self.history, id_a, prediction_date, self.n_hist, half_life_days=self.half_life_days
+        )
         if stats_a is None:
             stats_a = get_default_stats(rank_a)
         
         # Stats joueur B
-        stats_b = get_player_stats(self.history, id_b, prediction_date, self.n_hist)
+        stats_b = get_player_stats(
+            self.history, id_b, prediction_date, self.n_hist, half_life_days=self.half_life_days
+        )
         if stats_b is None:
             stats_b = get_default_stats(rank_b)
         
@@ -152,8 +171,12 @@ class TennisPreprocessor:
             features[f"{k}_b"] = v
         
         # Surface win rates (ordre corrigé: history, player_id, match_date, surface, n_matches)
-        surface_wr_a = get_surface_win_rate(self.history, id_a, prediction_date, surface, self.n_surf)
-        surface_wr_b = get_surface_win_rate(self.history, id_b, prediction_date, surface, self.n_surf)
+        surface_wr_a = get_surface_win_rate(
+            self.history, id_a, prediction_date, surface, self.n_surf, half_life_days=self.half_life_days
+        )
+        surface_wr_b = get_surface_win_rate(
+            self.history, id_b, prediction_date, surface, self.n_surf, half_life_days=self.half_life_days
+        )
         
         features["surface_win_rate_a"] = surface_wr_a
         features["surface_win_rate_b"] = surface_wr_b
@@ -165,7 +188,7 @@ class TennisPreprocessor:
         features["bp_save_rate_diff"] = stats_a["bp_save_rate"] - stats_b["bp_save_rate"]
         
         # Head-to-head (ordre corrigé: history, player_a, player_b, match_date)
-        h2h = get_h2h(self.history, id_a, id_b, prediction_date)
+        h2h = get_h2h(self.history, id_a, id_b, prediction_date, half_life_days=self.half_life_days)
         features["h2h_win_rate_a"] = h2h
         
         return features

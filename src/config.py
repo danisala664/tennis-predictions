@@ -14,6 +14,7 @@ RANDOM_STATE = 42
 TEST_SIZE = 0.2
 N_HISTORICAL_MATCHES = 10
 N_SURFACE_MATCHES = 20
+HALF_LIFE_DAYS = 180
 
 # Training
 MODEL_NAME = "AutoML"  # "LogisticRegression", "RandomForest", "XGBoost", "AutoML"

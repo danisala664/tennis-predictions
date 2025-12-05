@@ -4,6 +4,7 @@ Configurer les paramètres dans src/config.py
 """
 
 import pandas as pd
+import numpy as np
 from src.config import (
     RAW_DIR, PROCESSED_DIR, MODEL_NAME, 
     AUTOML_TIME_BUDGET, SKIP_PREPROCESSING
@@ -55,9 +56,13 @@ def main():
     print(f"ROC AUC: {test_metrics['roc_auc']:.4f}")
     
     # Baseline
-    baseline = max(y_test.mean(), 1 - y_test.mean())
-    print(f"\nBaseline (random): {baseline:.4f}")
-    print(f"Improvement: +{(test_metrics['accuracy'] - baseline) * 100:.2f}%")
+    # Baseline: le mieux classé gagne
+    rank_a = X_test["rank_a"].fillna(np.inf)
+    rank_b = X_test["rank_b"].fillna(np.inf)
+    baseline_pred = (rank_a <= rank_b).astype(int)
+    baseline_acc = (baseline_pred.values == y_test.values).mean()
+    print(f"\nBaseline (best rank wins): {baseline_acc:.4f}")
+    print(f"Improvement: +{(test_metrics['accuracy'] - baseline_acc) * 100:.2f}%")
     
     # Save
     save_model(model)
