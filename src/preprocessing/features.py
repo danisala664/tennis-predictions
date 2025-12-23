@@ -179,12 +179,8 @@ def create_features(df, history, n_hist, n_surf, rng, half_life_days=None):
         match_date = row["tourney_date"]
         surface = row["surface"]
 
-        # Colonnes meta (pour identifier le match, pas pour l'entraînement)
-        f = {
-            "player_a_name": row[f"{a_prefix}_name"],
-            "player_b_name": row[f"{b_prefix}_name"],
-            "tourney_date": match_date,
-        }
+        # Colonnes meta (pour identifier le match)
+        f = {"tourney_date": match_date}
 
         # Features statiques
         f.update({

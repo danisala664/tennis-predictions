@@ -1,66 +1,46 @@
-"""
-Module pour charger les données des bookmakers.
-
-TODO: À compléter par [ton pote] avec la fonction de téléchargement des cotes.
-"""
+"""Chargement des cotes bookmakers depuis tennis-data.co.uk."""
 
 import pandas as pd
 
 
-def load_bookmaker_odds(start_year=2024, end_year=2025):
-    """
-    Charge les cotes des bookmakers pour les matchs ATP.
+def load_bookmaker_odds(start_year=2025, end_year=2025, bookmaker='B365'):
+    """Charge les cotes depuis tennis-data.co.uk avec les classements."""
+    dfs = []
+    for year in range(start_year, end_year + 1):
+        url = f"http://www.tennis-data.co.uk/{year}/{year}.xlsx"
+        dfs.append(pd.read_excel(url))
 
-    TODO: Implémenter cette fonction pour retourner un DataFrame avec les colonnes :
-        - tourney_date : date du tournoi (format datetime ou YYYYMMDD)
-        - winner_name : nom du gagnant (pour faire le matching avec nos données)
-        - loser_name : nom du perdant
-        - odds_winner : cote du gagnant avant le match
-        - odds_loser : cote du perdant avant le match
+    data = pd.concat(dfs, ignore_index=True)
 
-    Optionnel mais utile :
-        - tourney_name : nom du tournoi
-        - winner_id / loser_id : identifiants des joueurs
+    cols = ['Date', 'WRank', 'LRank', f'{bookmaker}W', f'{bookmaker}L']
+    result = data[cols].copy()
+    result.columns = ['tourney_date', 'winner_rank', 'loser_rank', 'odds_winner', 'odds_loser']
+    result['tourney_date'] = pd.to_datetime(result['tourney_date'])
 
-    Args:
-        start_year: année de début
-        end_year: année de fin
-
-    Returns:
-        DataFrame avec les cotes des bookmakers
-
-    Exemple de format attendu :
-        tourney_date | winner_name    | loser_name     | odds_winner | odds_loser
-        2024-01-15   | Novak Djokovic | Carlos Alcaraz | 1.65        | 2.30
-        2024-01-15   | Jannik Sinner  | Daniil Medvedev| 1.80        | 2.05
-    """
-    # TODO: Remplacer par le vrai code de téléchargement
-    raise NotImplementedError(
-        "Cette fonction doit être implémentée pour charger les données bookmakers. "
-        "Elle doit retourner un DataFrame avec les colonnes : "
-        "tourney_date, winner_name, loser_name, odds_winner, odds_loser"
-    )
+    return result.dropna()
 
 
-def merge_with_matches(matches_df, odds_df):
-    """
-    Fusionne les données de matchs avec les cotes des bookmakers.
+def merge_odds_with_features(meta_test, odds_df, y_test):
+    """Fusionne les cotes avec les métadonnées via les classements."""
+    meta = meta_test.reset_index(drop=True).copy()
+    meta['_idx'] = meta.index
+    meta['tourney_date'] = pd.to_datetime(meta['tourney_date'])
+    odds_df['tourney_date'] = pd.to_datetime(odds_df['tourney_date'])
 
-    Args:
-        matches_df: DataFrame des matchs (depuis load_matches)
-        odds_df: DataFrame des cotes (depuis load_bookmaker_odds)
+    # Merge 1: player_a = winner (rank_a = winner_rank)
+    m1 = meta.merge(odds_df, left_on=['tourney_date', 'rank_a', 'rank_b'],
+                    right_on=['tourney_date', 'winner_rank', 'loser_rank'], how='inner')
+    m1['odds_a'], m1['odds_b'] = m1['odds_winner'], m1['odds_loser']
 
-    Returns:
-        DataFrame fusionné avec les cotes pour chaque match
-    """
-    # Matching sur date + noms des joueurs
-    merged = matches_df.merge(
-        odds_df,
-        on=['tourney_date', 'winner_name', 'loser_name'],
-        how='inner'
-    )
+    # Merge 2: player_a = loser (rank_a = loser_rank)
+    m2 = meta.merge(odds_df, left_on=['tourney_date', 'rank_a', 'rank_b'],
+                    right_on=['tourney_date', 'loser_rank', 'winner_rank'], how='inner')
+    m2['odds_a'], m2['odds_b'] = m2['odds_loser'], m2['odds_winner']
 
-    print(f"Matchs avec cotes : {len(merged)} / {len(matches_df)} "
-          f"({len(merged)/len(matches_df)*100:.1f}%)")
+    merged = pd.concat([m1, m2]).drop_duplicates(subset=['_idx']).sort_values('_idx')
+    idx = merged['_idx'].tolist()
 
-    return merged
+    result = merged[['tourney_date', 'rank_a', 'rank_b', 'odds_a', 'odds_b']].reset_index(drop=True)
+    y_matched = y_test.iloc[idx].reset_index(drop=True)
+
+    return result, y_matched, idx

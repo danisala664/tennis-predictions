@@ -59,7 +59,7 @@ class TennisPreprocessor:
         """Applique le one-hot encoding aux variables catégorielles."""
         encoded = self._encode_categorical(features_df.copy(), fit=fit)
         if fit:
-            meta_cols = ["target", "player_a_name", "player_b_name", "tourney_date"]
+            meta_cols = ["target", "tourney_date"]
             self.feature_cols = [c for c in encoded.columns if c not in meta_cols]
             self.fitted = True
         return encoded
@@ -71,110 +71,7 @@ class TennisPreprocessor:
         features_df = self.encode(features_df, fit=True)
         return features_df
 
-    def transform_upcoming(self, upcoming_df):
-        """
-        Transforme un DataFrame de matchs à venir (format player_a/player_b).
-        
-        Args:
-            upcoming_df: DataFrame avec colonnes player_a_*, player_b_*, surface, etc.
-        
-        Returns:
-            X: DataFrame de features prêt pour la prédiction
-        """
-        if not self.fitted:
-            raise ValueError("Preprocessor not fitted")
-        
-        # Date de prédiction = maintenant
-        prediction_date = pd.Timestamp.now()
-        
-        features_list = []
-        for _, row in upcoming_df.iterrows():
-            features = self._create_upcoming_features(row, prediction_date)
-            features_list.append(features)
-        
-        features_df = pd.DataFrame(features_list)
-        
-        # Encoder catégorielles
-        features_df = self._encode_categorical(features_df, fit=False)
-        
-        # Aligner colonnes avec train
-        for col in self.feature_cols:
-            if col not in features_df.columns:
-                features_df[col] = 0
-        
-        return features_df[self.feature_cols]
-    
-    def _create_upcoming_features(self, row, prediction_date):
-        """Crée les features pour un match à prédire."""
-        features = {}
-        
-        # === Features statiques ===
-        rank_a = row["player_a_rank"]
-        rank_b = row["player_b_rank"]
-        points_a = row["player_a_points"]
-        points_b = row["player_b_points"]
-        
-        features["rank_a"] = rank_a
-        features["rank_b"] = rank_b
-        features["points_a"] = points_a
-        features["points_b"] = points_b
-        features["age_a"] = row["player_a_age"]
-        features["age_b"] = row["player_b_age"]
-        features["height_a"] = row["player_a_ht"]
-        features["height_b"] = row["player_b_ht"]
-        
-        features["rank_ratio"] = rank_a / rank_b if rank_b > 0 else 1
-        features["is_left_a"] = 1 if row["player_a_hand"] == "L" else 0
-        features["is_left_b"] = 1 if row["player_b_hand"] == "L" else 0
-        
-        # Catégorielles (seront encodées après)
-        features["surface"] = row["surface"]
-        features["tourney_level"] = row["tourney_level"]
-        features["round"] = row["round"]
-        features["best_of_5"] = 1 if row["best_of"] == 5 else 0
-        
-        # === Features historiques ===
-        id_a = row["player_a_id"]
-        id_b = row["player_b_id"]
-        surface = row["surface"]
-        
-        # Stats joueur A (ordre corrigé: history, player_id, match_date, n_matches)
-        stats_a = get_player_stats(
-            self.history, id_a, prediction_date, self.n_hist, half_life_days=self.half_life_days
-        )
-        if stats_a is None:
-            stats_a = get_default_stats(rank_a)
-        
-        # Stats joueur B
-        stats_b = get_player_stats(
-            self.history, id_b, prediction_date, self.n_hist, half_life_days=self.half_life_days
-        )
-        if stats_b is None:
-            stats_b = get_default_stats(rank_b)
-        
-        # Ajouter toutes les stats
-        for k, v in stats_a.items():
-            features[f"{k}_a"] = v
-        for k, v in stats_b.items():
-            features[f"{k}_b"] = v
-        
-        # Surface win rates (ordre corrigé: history, player_id, match_date, surface, n_matches)
-        surface_wr_a = get_surface_win_rate(
-            self.history, id_a, prediction_date, surface, self.n_surf, half_life_days=self.half_life_days
-        )
-        surface_wr_b = get_surface_win_rate(
-            self.history, id_b, prediction_date, surface, self.n_surf, half_life_days=self.half_life_days
-        )
-        
-        features["surface_win_rate_a"] = surface_wr_a
-        features["surface_win_rate_b"] = surface_wr_b
-        
-        # Head-to-head (ordre corrigé: history, player_a, player_b, match_date)
-        h2h = get_h2h(self.history, id_a, id_b, prediction_date, half_life_days=self.half_life_days)
-        features["h2h_win_rate_a"] = h2h
-        
-        return features
-    
+       
     def _encode_categorical(self, df, fit=True):
         """One-hot encode les variables catégorielles avec drop_first pour éviter multicolinéarité."""
         if fit:
@@ -200,31 +97,22 @@ class TennisPreprocessor:
     
     def get_X_y(self, features_df):
         """Sépare features et target, en enlevant les colonnes meta."""
-        meta_cols = ["target", "player_a_name", "player_b_name", "tourney_date"]
+        meta_cols = ["target", "tourney_date"]
         cols_to_drop = [c for c in meta_cols if c in features_df.columns]
         X = features_df.drop(columns=cols_to_drop)
         y = features_df["target"]
         return X, y
 
     def split_temporal(self, features_df, cutoff_year=2024):
-        """
-        Split temporel : train ≤ cutoff_year, test > cutoff_year.
-
-        Args:
-            features_df: DataFrame avec colonne tourney_date
-            cutoff_year: année de coupure (incluse dans train)
-
-        Returns:
-            X_train, X_test, y_train, y_test, meta_test
-        """
+        """Split temporel : train ≤ cutoff_year, test > cutoff_year."""
         df = features_df.copy()
         df['_year'] = pd.to_datetime(df['tourney_date']).dt.year
 
         train_df = df[df['_year'] <= cutoff_year].drop(columns=['_year'])
         test_df = df[df['_year'] > cutoff_year].drop(columns=['_year'])
 
-        # Garder les colonnes meta du test pour la comparaison bookmakers
-        meta_cols = ["player_a_name", "player_b_name", "tourney_date"]
+        # Garder les colonnes meta du test pour la comparaison bookmakers (date + classements)
+        meta_cols = ["tourney_date", "rank_a", "rank_b"]
         meta_test = test_df[meta_cols].copy().reset_index(drop=True)
 
         X_train, y_train = self.get_X_y(train_df)

@@ -8,11 +8,6 @@ def proba_to_odds(proba):
     """
     Convertit une probabilité en cote décimale.
 
-    Args:
-        proba: float ou array de probabilités (entre 0 et 1)
-
-    Returns:
-        Cote décimale (ex: proba=0.5 → cote=2.0)
     """
     proba = np.asarray(proba)
     # Éviter division par zéro
