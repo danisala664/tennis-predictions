@@ -104,6 +104,7 @@ cd Projet-python
 # Installer les dépendances
 pip install -r requirements.txt
 ```
+La branche de travail principale est **main**.
 
 Puis exécuter `notebooks/rendu_final.ipynb`. Les données sont téléchargées automatiquement au premier lancement.
 
