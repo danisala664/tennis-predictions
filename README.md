@@ -106,5 +106,3 @@ cd Projet-python
 pip install -r requirements.txt
 ```
 Puis exécuter `notebooks/rendu_final.ipynb`. Les données sont téléchargées automatiquement au premier lancement.
-
-Puis exécuter `notebooks/rendu_final.ipynb`. Les données sont téléchargées automatiquement au premier lancement.
