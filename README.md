@@ -1,108 +1,108 @@
-# Prédiction des matchs de tennis ATP
+# ATP Tennis Match Prediction
 
-**Projet Python ENSAE**  
-*Auteurs : Dejean William, Sala Satorre Daniel, Auvepre Edouard*
+**ENSAE Python Project**
+*Authors: Dejean William, Sala Satorre Daniel, Auvepre Edouard*
 
-Le notebook final se trouve dans `notebooks/rendu_final.ipynb`.
+The final notebook is located at `notebooks/rendu_final.ipynb`.
 
-## Table des matières
+## Table of Contents
 
-1. [Sujet et problématique](#sujet-et-problématique)
-2. [Base de données](#base-de-données)
-3. [Modélisation](#modélisation)
-4. [Comparaison avec les bookmakers](#comparaison-avec-les-bookmakers)
-5. [Résultats principaux](#résultats-principaux)
-6. [Structure du projet](#structure-du-projet)
-7. [Installation et reproductibilité](#installation-et-reproductibilité)
+1. [Topic and Research Question](#topic-and-research-question)
+2. [Database](#database)
+3. [Modeling](#modeling)
+4. [Comparison with Bookmakers](#comparison-with-bookmakers)
+5. [Main Results](#main-results)
+6. [Project Structure](#project-structure)
+7. [Installation and Reproducibility](#installation-and-reproducibility)
 
-## Sujet et problématique
+## Topic and Research Question
 
-L'objectif de ce projet est de **prédire le vainqueur d'un match de tennis** en utilisant l'historique des données du circuit ATP (2000-2025).
+The objective of this project is to **predict the winner of a tennis match** using historical ATP circuit data (2000-2025).
 
-Contrairement aux approches "boîte noire", nous avons privilégié une **approche statistique interprétable** basée sur la régression logistique. Cela nous permet de quantifier précisément l'impact de chaque variable (classement, Elo, forme récente, surface) sur l'issue d'un match.
+Unlike "black box" approaches, we favored an **interpretable statistical approach** based on logistic regression. This allows us to precisely quantify the impact of each variable (ranking, Elo, recent form, surface) on match outcome.
 
-L'objectif final est de confronter notre modèle aux cotes des bookmakers pour évaluer sa pertinence.
+The ultimate goal is to compare our model against bookmaker odds to evaluate its relevance.
 
-## Base de données
+## Database
 
-Les données proviennent du repository [TML-Database](https://github.com/Tennismylife/TML-Database).
+The data comes from the [TML-Database](https://github.com/Tennismylife/TML-Database) repository.
 
-- **Volume :** ~78 000 matchs (2000-2025)
-- **Nettoyage :** Suppression des matchs incomplets (abandons, forfaits) représentant ~3.8% du dataset
+- **Volume:** ~78,000 matches (2000-2025)
+- **Cleaning:** Removal of incomplete matches (retirements, walkovers) representing ~3.8% of the dataset
 
 ### Feature Engineering
 
-Pour éviter le data leakage, nous avons :
-1. **Randomisé** l'attribution des joueurs en `Player A` et `Player B`
-2. Calculé les features uniquement avec les données **antérieures** à chaque match
+To avoid data leakage, we:
+1. **Randomized** player assignment to `Player A` and `Player B`
+2. Calculated features using only data **prior** to each match
 
-**Features créées :**
-- **Classement :** Rang ATP, Points ATP, Ratio de classement
-- **Elo :** Score Elo global et par surface (mis à jour dynamiquement)
-- **Forme récente :** Win rate, stats de service avec decay temporel (demi-vie 180 jours)
-- **Contexte :** Surface win rate, Head-to-Head, niveau du tournoi
-- **Physique :** Âge, taille, main dominante
+**Features created:**
+- **Ranking:** ATP Rank, ATP Points, Ranking Ratio
+- **Elo:** Global and surface-specific Elo score (dynamically updated)
+- **Recent Form:** Win rate, service stats with temporal decay (180-day half-life)
+- **Context:** Surface win rate, Head-to-Head, tournament level
+- **Physical:** Age, height, dominant hand
 
-## Modélisation
+## Modeling
 
-Nous avons utilisé une **régression logistique** via `statsmodels` pour obtenir les p-values et interpréter les coefficients.
+We used **logistic regression** via `statsmodels` to obtain p-values and interpret the coefficients.
 
-**Variables significatives :** Elo, classement (rank, points), win rate, surface win rate, H2H, stats de service, âge.
+**Significant variables:** Elo, ranking (rank, points), win rate, surface win rate, H2H, service stats, age.
 
-**Variables non significatives :** Taille, main dominante, tour du tournoi.
+**Non-significant variables:** Height, dominant hand, tournament round.
 
-## Comparaison avec les bookmakers
+## Comparison with Bookmakers
 
-Nous avons comparé nos prédictions aux cotes Bet365 sur les matchs de **2025** (316 matchs matchés).
+We compared our predictions to Bet365 odds on **2025** matches (316 matched matches).
 
-| Métrique | Modèle | Bookmakers |
-|----------|--------|------------|
+| Metric | Model | Bookmakers |
+|--------|-------|------------|
 | Accuracy | ~67% | ~72% |
-| ROI (tous les paris) | ~-1.5% | - |
+| ROI (all bets) | ~-1.5% | - |
 
-**Conclusion :** Notre modèle a une accuracy inférieure aux bookmakers. Le ROI négatif confirme qu'il est difficile de battre le marché avec des données publiques uniquement.
+**Conclusion:** Our model has lower accuracy than bookmakers. The negative ROI confirms that it is difficult to beat the market using only public data.
 
-## Résultats principaux
+## Main Results
 
-| Modèle | Accuracy | ROC AUC |
-|--------|----------|---------|
-| Baseline (meilleur classement) | 65.8% | - |
-| **Régression Logistique** | **67.7%** | **0.7465** |
+| Model | Accuracy | ROC AUC |
+|-------|----------|---------|
+| Baseline (better ranked player) | 65.8% | - |
+| **Logistic Regression** | **67.7%** | **0.7465** |
 
-- Le modèle bat la baseline de +1.9 points
-- L'**Elo** et le **classement** sont les meilleurs prédicteurs
-- Les variables physiques (taille, main) ne sont pas significatives
+- The model beats the baseline by +1.9 points
+- **Elo** and **ranking** are the best predictors
+- Physical variables (height, hand) are not significant
 
-## Structure du projet
+## Project Structure
 ```
-├── config.py                     # Paramètres et chemins
+├── config.py                     # Parameters and paths
 ├── src/
 │   ├── preprocessing/
-│   │   ├── cleaning.py           # Chargement et nettoyage
+│   │   ├── cleaning.py           # Loading and cleaning
 │   │   ├── features.py           # Feature engineering
-│   │   └── pipeline.py           # Classe TennisPreprocessor
+│   │   └── pipeline.py           # TennisPreprocessor class
 │   ├── training/
 │   │   └── models.py             # StatsLogitClassifier
 │   └── evaluation/
-│       ├── bookmakers.py         # Chargement des cotes
-│       └── comparison.py         # Calculs ROI, value bets
+│       ├── bookmakers.py         # Odds loading
+│       └── comparison.py         # ROI, value bets calculations
 ├── notebooks/
-│   └── rendu_final.ipynb         # Notebook principal
+│   └── rendu_final.ipynb         # Main notebook
 ├── data/
-│   └── raw/                      # CSVs (téléchargés automatiquement)
+│   └── raw/                      # CSVs (downloaded automatically)
 └── requirements.txt
 ```
 
-## Installation et reproductibilité
+## Installation and Reproducibility
 
 ```bash
-# Cloner le projet
+# Clone the project
 git clone https://github.com/Edouard386/Projet-python.git
 
-# Se placer dans le dossier
+# Navigate to the folder
 cd Projet-python
 
-# Installer les dépendances
+# Install dependencies
 pip install -r requirements.txt
 ```
-Puis exécuter `notebooks/rendu_final.ipynb`. Les données sont téléchargées automatiquement au premier lancement.
+Then run `notebooks/rendu_final.ipynb`. Data is downloaded automatically on first launch.
